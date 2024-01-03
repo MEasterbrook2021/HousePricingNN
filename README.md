@@ -1,2 +1,2 @@
-# HousePricingNN
-Intro2ML_CW2
+## Coursework 2 of Intro to Machine Learning
+### Linear Regression task using a Neural Network
