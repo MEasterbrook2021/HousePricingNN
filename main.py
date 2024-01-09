@@ -15,22 +15,44 @@ class Regressor():
 
         # Filling in NaN values
         mean_total_bedrooms = data["total_bedrooms"].mean() 
-        # print(data["total_bedrooms"].fillna(mean_total_bedrooms).isnull().sum())
+        data["total_bedrooms"].fillna(mean_total_bedrooms)
 
         # Encode values that are not numerical -> ocean_proximity.
+        features = ["latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "ocean_proximity", "median_house_value"]
+        preprop = make_column_transformer((OneHotEncoder(), ['ocean_proximity']), remainder='passthrough')
+        transformed_data = preprop.fit_transform(data)
+        column_names = ['<1H OCEAN', 'INLAND', 'ISLAND', 'NEAR BAY', 'NEAR OCEAN', 'index', 'longitude', 'latitude', 'housing_median_age', 'total_rooms', 'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value']
+        transformed_df = pd.DataFrame(transformed_data, columns=column_names)
 
-        train_split_index = int(0.8 * len(data))
-        test_split_index = len(data) - train_split_index
+        train_split_index = int(0.8 * len(transformed_df))
+        test_split_index = len(transformed_df) - train_split_index
 
         output_label = 'median_house_value'
-        x_train = data.loc[:train_split_index, data.columns != output_label]
-        y_train = data.loc[:train_split_index, data.columns == output_label]
 
-        x_test = data.loc[train_split_index+1: , data.columns != output_label]
-        y_test = data.loc[train_split_index+1: , data.columns == output_label]
+        self.x = transformed_df.loc[: , transformed_df.columns != output_label]
+        self.y = transformed_df.loc[: , transformed_df.columns == output_label]
+
+        x_tensor = torch.tensor(self.x.values, dtype=torch.float32)
+        y_tensor = torch.tensor(self.y.values, dtype=torch.float32)
+
+        x_tensor = (x_tensor - x_tensor.min(dim=0).values / (x_tensor.max(dim=0).values - x_tensor.min(dim=0).values))
+        y_tensor = (y_tensor - y_tensor.min(dim=0).values / (y_tensor.max(dim=0).values - y_tensor.min(dim=0).values))
+
+        return x_tensor, y_tensor
+
+        # Normalize our data
+
+        # self.x_train = transformed_df.loc[:train_split_index, transformed_df.columns != output_label]
+        # self.y_train = transformed_df.loc[:train_split_index, transformed_df.columns == output_label]
+
+        # self.x_test = transformed_df.loc[train_split_index+1: , transformed_df.columns != output_label]
+        # self.y_test = transformed_df.loc[train_split_index+1: , transformed_df.columns == output_label]
             
+        # test_tensor_x = torch.tensor(self.x_test, dtype=torch.float32)
+        # train_tensor_x = torch.tensor(self.x_train, dtype=torch.float32)
+        # test_tensor_y = torch.tensor(self.y_test, dtype=torch.float32)
+        # train_tensor_y = torch.tensor(self.y_train, dtype=torch.float32)
 
-        return x, y
 
     def fit(self, x ,y):
         #Fits the model to the data...
@@ -61,10 +83,9 @@ def example_main():
     data = shuffle(data).reset_index()
     # print(data)
     mean_total_bedrooms = data["total_bedrooms"].mean()
-    # print(data["total_bedrooms"].fillna(mean_total_bedrooms).isnull().sum())
+    data["total_bedrooms"].fillna(mean_total_bedrooms)
 
     # Split into train and test... --> we'll choose 80/20 split
-   
     features = ["latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "ocean_proximity", "median_house_value"]
 
     preprop = make_column_transformer((OneHotEncoder(), ['ocean_proximity']), remainder='passthrough')
@@ -74,7 +95,6 @@ def example_main():
     column_names = ['<1H OCEAN', 'INLAND', 'ISLAND', 'NEAR BAY', 'NEAR OCEAN', 'index', 'longitude', 'latitude', 'housing_median_age', 'total_rooms', 'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value']
     transformed_df = pd.DataFrame(transformed_data, columns=column_names)
 
-    print(transformed_df)
 
     # rename_dict = {'onehotencoder__ocean_proximity_<1H OCEAN': '<1H OCEAN', 'onehotencoder__ocean_proximity_INLAND': 'INLAND', 'onehotencoder__ocean_proximity_ISLAND': 'ISLAND', 'onehotencoder__ocean_proximity_NEAR BAY': 'NEAR BAY', 'onehotencoder__ocean_proximity_NEAR OCEAN': 'NEAR OCEAN'}
     # transformed_df.rename(columns=rename_dict, inplace=True)
@@ -84,16 +104,24 @@ def example_main():
     # print(transformed_df)
     # print(transformed_df.columns)
     
-    train_split_index = int(0.8 * len(data))
-    test_split_index = len(data) - train_split_index
+    train_split_index = int(0.8 * len(transformed_df))
+    test_split_index = len(transformed_df) - train_split_index
 
     output_label = 'median_house_value'
-    x_train = data.loc[:train_split_index, data.columns != output_label]
-    y_train = data.loc[:train_split_index, data.columns == output_label]
 
-    x_test = data.loc[train_split_index+1: , data.columns != output_label]
-    y_test = data.loc[train_split_index+1: , data.columns == output_label]
+    x = transformed_df.loc[:, transformed_df.columns != output_label]
+    y = transformed_df.loc[:, transformed_df.columns == output_label]
 
+    # print(data)
+    # x_train = transformed_df.loc[:train_split_index, transformed_df.columns != output_label]
+    # y_train = transformed_df.loc[:train_split_index, transformed_df.columns == output_label]
+
+    # x_test = transformed_df.loc[train_split_index+1: , transformed_df.columns != output_label]
+    # y_test = transformed_df.loc[train_split_index+1: , transformed_df.columns == output_label]
+
+    # print(x_test.values)
+
+    # print(type(tensor_x))
     # print(len(x_train) + len(x_test) == len(data))
     # print(train_split_index, test_split_index)
     # regressor = Regressor()
