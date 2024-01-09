@@ -3,15 +3,24 @@ import numpy as np
 from sklearn.utils import shuffle
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.compose import make_column_transformer
+from sklearn.model_selection import train_test_split
 import torch
+import torch.nn as nn
+from torch.utils.data import TensorDataset, DataLoader
 
 class Regressor():
     
-    def __init__(self, x):
+    def __init__(self, x, learning_rate, batch_size, epochs):
         X, _ = self._preprocessor() # X will have the returned preprocessed values.
         # Whatever other args or values that the self should contain...
+        self.input_size = X.shape[1]
+        self.output_size = 1
+        self.learning_rate = learning_rate
+        self.batch_size = batch_size
+        self.epochs = epochs
 
-    def _preprocessor(self, data, training=False):
+
+    def _preprocessor(self, data):
 
         # Filling in NaN values
         mean_total_bedrooms = data["total_bedrooms"].mean() 
@@ -23,6 +32,7 @@ class Regressor():
         transformed_data = preprop.fit_transform(data)
         column_names = ['<1H OCEAN', 'INLAND', 'ISLAND', 'NEAR BAY', 'NEAR OCEAN', 'index', 'longitude', 'latitude', 'housing_median_age', 'total_rooms', 'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value']
         transformed_df = pd.DataFrame(transformed_data, columns=column_names)
+        transformed_df.drop(columns=['index'], inplace=True)
 
         train_split_index = int(0.8 * len(transformed_df))
         test_split_index = len(transformed_df) - train_split_index
@@ -54,9 +64,45 @@ class Regressor():
         # train_tensor_y = torch.tensor(self.y_train, dtype=torch.float32)
 
 
-    def fit(self, x ,y):
-        #Fits the model to the data...
-        pass
+    def fit(self, data):
+        X, Y = self._preprocessor(data=data)
+        X_train, X_val, y_train, y_val = train_test_split(X, Y, train_size=0.8)
+
+        self.model = nn.Sequential(
+            nn.Linear(self.input_size, 18),
+            nn.ReLU(),
+            nn.Linear(18, 12),
+            nn.ReLU(),
+            nn.Linear(12, 8),
+            nn.ReLU(),
+            nn.Linear(8, 4),
+            nn.ReLU(),
+            nn.Linear(4, 1),
+        )
+
+        loss_function = nn.MSELoss()
+        optimiser = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
+
+        train_dataset = TensorDataset(X_train, y_train)
+        train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False)
+
+        for epoch in range(self.epochs):
+            self.model.train()
+            total_training_loss = 0
+
+            for batch_inputs, batch_target in train_loader:
+                optimiser.zero_grad()
+                outputs = self.model(batch_inputs)
+                loss = loss_function(outputs, batch_target)
+                loss.backward()
+                optimiser.step()
+
+                total_training_loss += loss.item()
+
+        average_training_loss = loss.item() / len(train_loader)
+        print(f"Average training loss for Epoch {epoch + 1} is {average_training_loss}")
+
+        return self.model
 
     def predict(self, x):
         #Uses the model to predict
@@ -94,6 +140,7 @@ def example_main():
 
     column_names = ['<1H OCEAN', 'INLAND', 'ISLAND', 'NEAR BAY', 'NEAR OCEAN', 'index', 'longitude', 'latitude', 'housing_median_age', 'total_rooms', 'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value']
     transformed_df = pd.DataFrame(transformed_data, columns=column_names)
+    transformed_df.drop(columns=['index'], inplace=True)
 
 
     # rename_dict = {'onehotencoder__ocean_proximity_<1H OCEAN': '<1H OCEAN', 'onehotencoder__ocean_proximity_INLAND': 'INLAND', 'onehotencoder__ocean_proximity_ISLAND': 'ISLAND', 'onehotencoder__ocean_proximity_NEAR BAY': 'NEAR BAY', 'onehotencoder__ocean_proximity_NEAR OCEAN': 'NEAR OCEAN'}
@@ -112,7 +159,7 @@ def example_main():
     x = transformed_df.loc[:, transformed_df.columns != output_label]
     y = transformed_df.loc[:, transformed_df.columns == output_label]
 
-    # print(data)
+    print(x.shape)
     # x_train = transformed_df.loc[:train_split_index, transformed_df.columns != output_label]
     # y_train = transformed_df.loc[:train_split_index, transformed_df.columns == output_label]
 
