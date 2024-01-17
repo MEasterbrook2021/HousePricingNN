@@ -7,6 +7,8 @@ from sklearn.model_selection import train_test_split
 import torch
 import torch.nn as nn
 from torch.utils.data import TensorDataset, DataLoader
+from sklearn.metrics import mean_squared_error
+import pickle
 
 class Regressor():
     
@@ -66,7 +68,7 @@ class Regressor():
 
     def fit(self, data):
         X, Y = self._preprocessor(data=data)
-        X_train, X_val, y_train, y_val = train_test_split(X, Y, train_size=0.8)
+        self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(X, Y, train_size=0.8)
 
         self.model = nn.Sequential(
             nn.Linear(self.input_size, 18),
@@ -83,7 +85,7 @@ class Regressor():
         loss_function = nn.MSELoss()
         optimiser = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
-        train_dataset = TensorDataset(X_train, y_train)
+        train_dataset = TensorDataset(self.X_train, self.y_train)
         train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False)
 
         for epoch in range(self.epochs):
@@ -104,21 +106,41 @@ class Regressor():
 
         return self.model
 
-    def predict(self, x):
-        #Uses the model to predict
-        pass
+    def predict(self):
+        #Uses the model to predict, pass in testing data.
+        self.model.eval()
+        with torch.no_grad():
+            predictions = self.model(self.X_val)
+
+        return predictions.numpy()
 
     def score(self, y):
-        #Evaluates the model
-        pass
+        #Evaluates the model with the predictions given.
+
+        true_values = self.y_val.numpy()
+        predicted_values = self.predict()
+
+        mse = mean_squared_error(true_values, predicted_values)
+
+        return mse
+
+        
 
 def save_regressor(trained_model):
     #Save the model
-    pass
+    with open('nn_model.pickle', 'wb') as target:
+        pickle.dump(trained_model, target)
+
+    print("\n Saved model in nn_model.pickle\n")
 
 def load_regressor():
-    #Load from pickle file
-    pass
+    
+    with open('nn_model.pickle', 'rb') as target:
+        trained_model = pickle.load(target)
+        
+    print("\n Loaded model from nn_model.pickle\n")
+
+    return trained_model
 
 def HyperParameterSearch(X, y, model):
     pass
