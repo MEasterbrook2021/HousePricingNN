@@ -12,8 +12,8 @@ import pickle
 
 class Regressor():
     
-    def __init__(self, x, learning_rate, batch_size, epochs):
-        X, _ = self._preprocessor() # X will have the returned preprocessed values.
+    def __init__(self, data, learning_rate, batch_size, epochs): # Learning rate, batch size and epochs will be hyperparameters to tune later.
+        X, _ = self._preprocessor(data) # X will have the returned preprocessed values.
         # Whatever other args or values that the self should contain...
         self.input_size = X.shape[1]
         self.output_size = 1
@@ -23,10 +23,8 @@ class Regressor():
 
 
     def _preprocessor(self, data):
-
-        # Filling in NaN values
-        mean_total_bedrooms = data["total_bedrooms"].mean() 
-        data["total_bedrooms"].fillna(mean_total_bedrooms)
+        mean_total_bedrooms = data["total_bedrooms"].mean() # Filling in NaN values, in this case only mean_total_bedrooms...
+        data["total_bedrooms"].fillna(mean_total_bedrooms, inplace=True) # Should make a case for general NaN values.
 
         # Encode values that are not numerical -> ocean_proximity.
         features = ["latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "ocean_proximity", "median_house_value"]
@@ -44,6 +42,8 @@ class Regressor():
         self.x = transformed_df.loc[: , transformed_df.columns != output_label]
         self.y = transformed_df.loc[: , transformed_df.columns == output_label]
 
+        print("Checking preprocessor for NaN values: ", self.x.isna().sum())
+
         x_tensor = torch.tensor(self.x.values, dtype=torch.float32)
         y_tensor = torch.tensor(self.y.values, dtype=torch.float32)
 
@@ -52,23 +52,16 @@ class Regressor():
 
         return x_tensor, y_tensor
 
-        # Normalize our data
 
-        # self.x_train = transformed_df.loc[:train_split_index, transformed_df.columns != output_label]
-        # self.y_train = transformed_df.loc[:train_split_index, transformed_df.columns == output_label]
-
-        # self.x_test = transformed_df.loc[train_split_index+1: , transformed_df.columns != output_label]
-        # self.y_test = transformed_df.loc[train_split_index+1: , transformed_df.columns == output_label]
-            
-        # test_tensor_x = torch.tensor(self.x_test, dtype=torch.float32)
-        # train_tensor_x = torch.tensor(self.x_train, dtype=torch.float32)
-        # test_tensor_y = torch.tensor(self.y_test, dtype=torch.float32)
-        # train_tensor_y = torch.tensor(self.y_train, dtype=torch.float32)
-
-
-    def fit(self, data):
+    def fit(self, data, validation=False): # Only needs training data...
         X, Y = self._preprocessor(data=data)
-        self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(X, Y, train_size=0.8)
+
+        if(validation==False):
+            self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(X, Y, train_size=0.8)
+        else:
+            self.X_train, X_temp, self.y_train, y_temp = train_test_split(X, Y, train_size=0.7)
+            self.X_val, self.X_test, self.y_val, self.y_test = train_test_split(X_temp, y_temp, test_size=0.5)
+
 
         self.model = nn.Sequential(
             nn.Linear(self.input_size, 18),
@@ -81,7 +74,7 @@ class Regressor():
             nn.ReLU(),
             nn.Linear(4, 1),
         )
-
+        
         loss_function = nn.MSELoss()
         optimiser = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate)
 
@@ -89,6 +82,7 @@ class Regressor():
         train_loader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=False)
 
         for epoch in range(self.epochs):
+
             self.model.train()
             total_training_loss = 0
 
@@ -101,40 +95,43 @@ class Regressor():
 
                 total_training_loss += loss.item()
 
-        average_training_loss = loss.item() / len(train_loader)
-        print(f"Average training loss for Epoch {epoch + 1} is {average_training_loss}")
+        # average_training_loss = loss.item() / len(train_loader)
+        # print(f"Average training loss for Epoch {epoch + 1} is {average_training_loss}")
 
         return self.model
 
-    def predict(self):
-        #Uses the model to predict, pass in testing data.
+    def predict(self, validation=False):
         self.model.eval()
         with torch.no_grad():
-            predictions = self.model(self.X_val)
+            if validation:
+                predictions = self.model(self.X_val)
+            else:
+                predictions = self.model(self.X_test)
 
         return predictions.numpy()
 
-    def score(self, y):
-        #Evaluates the model with the predictions given.
-
-        true_values = self.y_val.numpy()
-        predicted_values = self.predict()
+    def score(self, validation=False): # Needs to take in data as an argument.
+        if validation:
+            true_values = self.y_val.numpy()
+            predicted_values = self.predict(validation=True)
+        else:
+            true_values = self.y_test.numpy() # This is y_true
+            predicted_values = self.predict() # Predicted is obtained from X_test
 
         mse = mean_squared_error(true_values, predicted_values)
+        rmse = np.sqrt(mse)
 
-        return mse
+        return rmse
 
-        
+
 
 def save_regressor(trained_model):
-    #Save the model
     with open('nn_model.pickle', 'wb') as target:
         pickle.dump(trained_model, target)
 
     print("\n Saved model in nn_model.pickle\n")
 
 def load_regressor():
-    
     with open('nn_model.pickle', 'rb') as target:
         trained_model = pickle.load(target)
         
@@ -142,59 +139,59 @@ def load_regressor():
 
     return trained_model
 
-def HyperParameterSearch(X, y, model):
-    pass
+def HyperParameterSearch(model, params):
+    # Split into 70/15/15 training/validation/testing
+    # Then score with the final 15%?
+    # Want to store best_model and cur_model
+
+    best_score = 9999999
+    cur_score = 0
+    best_params = {"learning_rate" : 0,
+                   "nb_epochs" : 0,
+                   "batch_size" : 0}
+
+    for rate in params["learning_rates"]:
+        print("\n Trying {} as learning rate".format(rate))
+        model.learning_rate = rate
+        for epochs in params["nb_epochs"]:
+            print("Trying {} epochs".format(epochs))
+            model.nb_epochs = epochs
+            for batch_size in params["batch_size"]:
+                print("\n Trying {} batch size".format(batch_size))
+                model.batch_size = batch_size
+                cur_score = model.score(validation=True)
+                if(cur_score < best_score):
+                    best_params["learning_rate"], best_params["batch_size"], best_params["nb_epochs"] = rate, batch_size, epochs
+                    best_score = cur_score
+    
+    print("\n Best RMSE from hyperparameter tuning is: {}\n".format(best_score))
+
+    return best_params
 
 def example_main():
+    HyperParamTuning = False
 
     data = pd.read_csv('housing.csv')
     data = shuffle(data).reset_index()
-    # print(data)
-    mean_total_bedrooms = data["total_bedrooms"].mean()
-    data["total_bedrooms"].fillna(mean_total_bedrooms)
 
-    # Split into train and test... --> we'll choose 80/20 split
-    features = ["latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "ocean_proximity", "median_house_value"]
+    regressor = Regressor(data=data, learning_rate=0.001, batch_size=16, epochs=10)
 
-    preprop = make_column_transformer((OneHotEncoder(), ['ocean_proximity']), remainder='passthrough')
+    params = {"learning_rates" : [0.001, 0.002, 0.005, 0.01, 0.02],
+              "nb_epochs" : [50, 100, 200],
+              "batch_size" : [8, 16, 32]}
 
-    transformed_data = preprop.fit_transform(data)
+    if not HyperParamTuning: 
 
-    column_names = ['<1H OCEAN', 'INLAND', 'ISLAND', 'NEAR BAY', 'NEAR OCEAN', 'index', 'longitude', 'latitude', 'housing_median_age', 'total_rooms', 'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value']
-    transformed_df = pd.DataFrame(transformed_data, columns=column_names)
-    transformed_df.drop(columns=['index'], inplace=True)
+        regressor.fit(data=data, validation=False)
+        error = regressor.score()
 
+        print("\n Regressor error is: {}\n".format(error))
 
-    # rename_dict = {'onehotencoder__ocean_proximity_<1H OCEAN': '<1H OCEAN', 'onehotencoder__ocean_proximity_INLAND': 'INLAND', 'onehotencoder__ocean_proximity_ISLAND': 'ISLAND', 'onehotencoder__ocean_proximity_NEAR BAY': 'NEAR BAY', 'onehotencoder__ocean_proximity_NEAR OCEAN': 'NEAR OCEAN'}
-    # transformed_df.rename(columns=rename_dict, inplace=True)
+    else:
+        regressor.fit(data=data, validation=True)
+        best_parameters = HyperParameterSearch(model=regressor, params=params)
 
-    # print(transformed_df)
-
-    # print(transformed_df)
-    # print(transformed_df.columns)
+        print("Best parameters are", best_parameters)
     
-    train_split_index = int(0.8 * len(transformed_df))
-    test_split_index = len(transformed_df) - train_split_index
-
-    output_label = 'median_house_value'
-
-    x = transformed_df.loc[:, transformed_df.columns != output_label]
-    y = transformed_df.loc[:, transformed_df.columns == output_label]
-
-    print(x.shape)
-    # x_train = transformed_df.loc[:train_split_index, transformed_df.columns != output_label]
-    # y_train = transformed_df.loc[:train_split_index, transformed_df.columns == output_label]
-
-    # x_test = transformed_df.loc[train_split_index+1: , transformed_df.columns != output_label]
-    # y_test = transformed_df.loc[train_split_index+1: , transformed_df.columns == output_label]
-
-    # print(x_test.values)
-
-    # print(type(tensor_x))
-    # print(len(x_train) + len(x_test) == len(data))
-    # print(train_split_index, test_split_index)
-    # regressor = Regressor()
-
-
 if __name__ == "__main__":
     example_main()
