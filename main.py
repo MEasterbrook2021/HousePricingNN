@@ -27,18 +27,13 @@ class Regressor():
     def _preprocessor(self, data):
         mean_total_bedrooms = data["total_bedrooms"].mean() # Filling in NaN values, in this case only mean_total_bedrooms...
         data["total_bedrooms"].fillna(mean_total_bedrooms, inplace=True) # Should make a case for general NaN values.
-        
 
         # Encode values that are not numerical -> ocean_proximity.
-        features = ["latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "ocean_proximity", "median_house_value"]
         preprop = make_column_transformer((OneHotEncoder(), ['ocean_proximity']), remainder='passthrough')
         transformed_data = preprop.fit_transform(data)
         column_names = ['<1H OCEAN', 'INLAND', 'ISLAND', 'NEAR BAY', 'NEAR OCEAN', 'index', 'longitude', 'latitude', 'housing_median_age', 'total_rooms', 'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value']
         transformed_df = pd.DataFrame(transformed_data, columns=column_names)
         transformed_df.drop(columns=['index'], inplace=True)
-
-        train_split_index = int(0.8 * len(transformed_df))
-        test_split_index = len(transformed_df) - train_split_index
 
         output_label = 'median_house_value'
 
@@ -47,9 +42,11 @@ class Regressor():
 
         # print("Checking preprocessor for NaN values: ", self.x.isna().sum())
 
+        #Converting to tensors
         x_tensor = torch.tensor(self.x.values, dtype=torch.float32)
         y_tensor = torch.tensor(self.y.values, dtype=torch.float32)
 
+        # Normalizing between 0 and 1.
         x_tensor = (x_tensor - x_tensor.min(dim=0).values / (x_tensor.max(dim=0).values - x_tensor.min(dim=0).values))
         y_tensor = (y_tensor - y_tensor.min(dim=0).values / (y_tensor.max(dim=0).values - y_tensor.min(dim=0).values))
 
@@ -144,7 +141,6 @@ def load_regressor():
 
 def HyperParameterSearch(model, params, data):
     # Split into 70/15/15 training/validation/testing
-    # Then score with the final 15%?
     # Want to store best_model and cur_model
 
     best_score = 9999999
@@ -173,25 +169,27 @@ def HyperParameterSearch(model, params, data):
     return best_params
 
 def example_main():
-    HyperParamTuning = True
+    HyperParamTuning = False
 
     data = pd.read_csv('housing.csv')
     data = shuffle(data).reset_index()
 
-    regressor = Regressor(data=data, learning_rate=0.001, batch_size=16, epochs=10)
+    regressor = Regressor(data=data, learning_rate=0.02, batch_size=16, epochs=20)
+    # Best parameters so far, lr=0.02, batch_size=8, epochs=200
 
     params = {"learning_rates" : [0.001, 0.002, 0.005, 0.01, 0.02],
               "nb_epochs" : [50, 100, 200],
               "batch_size" : [8, 16, 32]}
 
     if not HyperParamTuning: 
-
+        # Once Hyper Parameters have been found.
         regressor.fit(data=data, validation=False)
         error = regressor.score()
 
         print("\n Regressor error is: {}\n".format(error))
 
     else:
+        # Tuning Hyper Parameters
         regressor.fit(data=data, validation=True)
         best_parameters = HyperParameterSearch(data=data, model=regressor, params=params)
 
