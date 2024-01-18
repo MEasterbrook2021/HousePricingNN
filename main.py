@@ -14,10 +14,12 @@ class Regressor():
     
     def __init__(self, data, learning_rate, batch_size, epochs): # Learning rate, batch size and epochs will be hyperparameters to tune later.
         X, _ = self._preprocessor(data) # X will have the returned preprocessed values.
-        # Whatever other args or values that the self should contain...
-        self.input_size = X.shape[1]
-        self.output_size = 1
-        self.learning_rate = learning_rate
+
+        self.input_size = X.shape[1]    # This will be our input node to the Neural Network
+        self.output_size = 1    # Linear regression, just want a number -> output size of 1.
+
+        # Hyperparameters that will be tuned using the hyperparameter tuning function
+        self.learning_rate = learning_rate 
         self.batch_size = batch_size
         self.epochs = epochs
 
@@ -25,6 +27,7 @@ class Regressor():
     def _preprocessor(self, data):
         mean_total_bedrooms = data["total_bedrooms"].mean() # Filling in NaN values, in this case only mean_total_bedrooms...
         data["total_bedrooms"].fillna(mean_total_bedrooms, inplace=True) # Should make a case for general NaN values.
+        
 
         # Encode values that are not numerical -> ocean_proximity.
         features = ["latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income", "ocean_proximity", "median_house_value"]
@@ -42,7 +45,7 @@ class Regressor():
         self.x = transformed_df.loc[: , transformed_df.columns != output_label]
         self.y = transformed_df.loc[: , transformed_df.columns == output_label]
 
-        print("Checking preprocessor for NaN values: ", self.x.isna().sum())
+        # print("Checking preprocessor for NaN values: ", self.x.isna().sum())
 
         x_tensor = torch.tensor(self.x.values, dtype=torch.float32)
         y_tensor = torch.tensor(self.y.values, dtype=torch.float32)
@@ -139,7 +142,7 @@ def load_regressor():
 
     return trained_model
 
-def HyperParameterSearch(model, params):
+def HyperParameterSearch(model, params, data):
     # Split into 70/15/15 training/validation/testing
     # Then score with the final 15%?
     # Want to store best_model and cur_model
@@ -154,11 +157,12 @@ def HyperParameterSearch(model, params):
         print("\n Trying {} as learning rate".format(rate))
         model.learning_rate = rate
         for epochs in params["nb_epochs"]:
-            print("Trying {} epochs".format(epochs))
+            print("\n Trying {} epochs".format(epochs))
             model.nb_epochs = epochs
             for batch_size in params["batch_size"]:
                 print("\n Trying {} batch size".format(batch_size))
                 model.batch_size = batch_size
+                model.fit(data=data, validation=True)
                 cur_score = model.score(validation=True)
                 if(cur_score < best_score):
                     best_params["learning_rate"], best_params["batch_size"], best_params["nb_epochs"] = rate, batch_size, epochs
@@ -169,7 +173,7 @@ def HyperParameterSearch(model, params):
     return best_params
 
 def example_main():
-    HyperParamTuning = False
+    HyperParamTuning = True
 
     data = pd.read_csv('housing.csv')
     data = shuffle(data).reset_index()
@@ -189,7 +193,7 @@ def example_main():
 
     else:
         regressor.fit(data=data, validation=True)
-        best_parameters = HyperParameterSearch(model=regressor, params=params)
+        best_parameters = HyperParameterSearch(data=data, model=regressor, params=params)
 
         print("Best parameters are", best_parameters)
     
